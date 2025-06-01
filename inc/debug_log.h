@@ -5,6 +5,8 @@
     Include Files
 */
 
+#include <stdio.h>
+
 /*
     Defines
 */
@@ -27,6 +29,11 @@
     printf("\r\n"); \
 } while(0)
 
+#define DBG_ALZ(...)    do { \
+    printf("[DEBUG_ALZ] %s:%d: ", __FILE__, __LINE__); \
+    printf(__VA_ARGS__); \
+    printf("\r\n"); \
+} while(0)
 
 #define PFM_ENSURE_RET(expression, ret)    do   {   \
     if(!(expression))   \
@@ -47,6 +54,21 @@ typedef enum
     ERR_NO_MEMORY,      /* 内存不足 */
 
     ERR_THREAD_POOL_INIT = 100,     /* 线程池初始化失败 */
+
+    ERR_FILE_OPEN = 200,      /* 文件打开失败 */
 }ERR_CODE;
+
+/*
+    Function declarations
+*/
+
+/*
+    function    写入调试日志，等级alz
+    in
+                format          格式化字符串
+    out
+    ret         errCode
+*/
+ERR_CODE debug_log_alz(const char *format);
 
 #endif
