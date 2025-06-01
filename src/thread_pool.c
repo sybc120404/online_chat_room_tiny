@@ -126,7 +126,7 @@ ERR_CODE thread_pool_init(thread_pool_t *p_pool, int thread_count, int task_queu
         }
     }
 
-    DBG_ALZ("create thread pool success");
+    DBG("create thread pool success");
 
     return ERR_NO_ERROR;
 err:
@@ -187,7 +187,7 @@ ERR_CODE thread_pool_destroy(thread_pool_t *p_pool)
     if(p_pool->cond)        free(p_pool->cond);
     memset(p_pool, 0, sizeof(thread_pool_t));  /* 清空线程池 */
 
-    DBG_ALZ("thread pool destroyed");
+    DBG("thread pool destroyed");
 
     return ERR_NO_ERROR;
 }

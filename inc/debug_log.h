@@ -11,6 +11,11 @@
     Defines
 */
 
+/* 入参出参标识 */
+#define IN
+#define OUT
+
+/* DBG格式控制 */
 #define DBG_FMT_GREEN   "\033[32m"
 #define DBG_FMT_RED     "\033[31m"
 #define DBG_FMT_END     "\033[0m"
@@ -60,6 +65,8 @@ typedef enum
     ERR_THREAD_POOL_INIT = 100,     /* 线程池初始化失败 */
 
     ERR_FILE_OPEN = 200,      /* 文件打开失败 */
+
+    ERR_SERVER_INIT = 300,  /* 服务器初始化失败 */
 }ERR_CODE;
 
 /*
