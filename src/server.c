@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include "server.h"
 
 /*
@@ -32,22 +33,50 @@ ERR_CODE server_init(
     int server_thread_task_queue_size
 )
 {
-#if 0
     int thread_pool_flag = 0;
-#endif
+    struct sockaddr_in server_addr;
 
     PFM_ENSURE_RET(NULL != p_server, ERR_BAD_PARAM);
     PFM_ENSURE_RET(0 < server_thread_pool_size && 0 < server_thread_task_queue_size, ERR_BAD_PARAM);
 
     /* 初始化服务器线程池 */
     PFM_ENSURE_RET(ERR_NO_ERROR == thread_pool_init(&(p_server->thread_pool), server_thread_pool_size, server_thread_task_queue_size), ERR_SERVER_INIT);
-#if 0
     thread_pool_flag = 1;
-#endif
     DBG("server init thread pool with %d threads, %d tasks", server_thread_pool_size, server_thread_task_queue_size);
 
+    /* 创建socket */
+    p_server->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if(-1 == p_server->socket_fd)
+    {
+        DBG_ERR("create socket failed");
+        perror("socket create");
+        goto err;
+    }
+    DBG_ALZ("create socket %d", p_server->socket_fd);
+
+    /* 绑定socket */
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);        /* 绑定所有接口上 */
+    server_addr.sin_port = htons(SERVER_PORT);
+    if(0 != bind(p_server->socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)))
+    {
+        DBG_ERR("bind socket failed");
+        perror("socket bind");
+        goto err;
+    }
+    DBG_ALZ("server bind socket %d to %d", p_server->socket_fd, SERVER_PORT);
+
+    /* 监听socket */
+    if(0 != listen(p_server->socket_fd, SERVER_CONNECT_SIZE))
+    {
+        DBG_ERR("listen socket failed");
+        perror("socket listen");
+        goto err;
+    }
+    DBG_ALZ("server listen socket %d", p_server->socket_fd);
+
     /* 初始化其他参数 */
-    p_server->socket_fd = -1;
     p_server->connect_head.fd = -1;
     p_server->connect_head.next = NULL;
     p_server->connect_count = 0;
@@ -55,13 +84,11 @@ ERR_CODE server_init(
     DBG_ALZ("server init done");
     return ERR_NO_ERROR;
 
-#if 0
 err:
     if(thread_pool_flag)    thread_pool_destroy(&(p_server->thread_pool));
     memset(p_server, 0, sizeof(server_t));
 
     return ERR_SERVER_INIT;
-#endif
 }
 
 /*

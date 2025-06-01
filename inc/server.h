@@ -7,6 +7,7 @@
 
 #include "thread_pool.h"
 #include <sys/socket.h>
+#include <netinet/in.h>
 
 /*
     Typedefs
@@ -22,6 +23,9 @@
 
 /* 服务器最大连接限制 */
 #define SERVER_CONNECT_SIZE             (5)
+
+/* socket相关参数 */
+#define SERVER_PORT                     (10808) /* 服务器监听端口 */
 
 /* 服务器与客户端连接结构 */
 typedef struct connect_s
