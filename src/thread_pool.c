@@ -34,7 +34,7 @@ static void *thread_worker(void *p_pool)
         /* 线程池销毁标志1 */
         if(pool->shutdown)
         {
-            DBG_ALZ("Thread %ld exit for destroy thread pool", pthread_self());
+            DBG("Thread %ld exit for destroy thread pool", pthread_self());
             pthread_mutex_unlock(pool->mutex);
             break;
         }

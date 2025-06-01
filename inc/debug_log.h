@@ -11,7 +11,11 @@
     Defines
 */
 
-#define DBG_ON  /* 控制debug行为 */
+#define DBG_FMT_GREEN   "\033[32m"
+#define DBG_FMT_RED     "\033[31m"
+#define DBG_FMT_END     "\033[0m"
+
+//#define DBG_ON  /* 控制debug行为 */
 
 #ifdef DBG_ON
 /* 普通DBG */
@@ -24,13 +28,13 @@
 #define DBG(...)    do{}while(0)
 #endif
 #define DBG_ERR(...)    do { \
-    printf("[DEBUG_ERROR] %s:%d: ", __FILE__, __LINE__); \
+    printf(DBG_FMT_RED"[DEBUG_ERROR]"DBG_FMT_END" %s:%d: ", __FILE__, __LINE__); \
     printf(__VA_ARGS__); \
-    printf("\r\n"); \
+    printf(DBG_FMT_END"\r\n"); \
 } while(0)
 
 #define DBG_ALZ(...)    do { \
-    printf("[DEBUG_ALZ] %s:%d: ", __FILE__, __LINE__); \
+    printf(DBG_FMT_GREEN"[DEBUG_ALZ]"DBG_FMT_END" %s:%d: ", __FILE__, __LINE__); \
     printf(__VA_ARGS__); \
     printf("\r\n"); \
 } while(0)
