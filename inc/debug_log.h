@@ -67,6 +67,8 @@ typedef enum
     ERR_FILE_OPEN = 200,      /* 文件打开失败 */
 
     ERR_SERVER_INIT = 300,  /* 服务器初始化失败 */
+    ERR_SERVER_NEW_CONNECT, /* 服务器新连接处理失败 */
+    
 }ERR_CODE;
 
 /*

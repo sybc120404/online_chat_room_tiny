@@ -6,6 +6,7 @@
 */
 
 #include "thread_pool.h"
+
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -27,11 +28,13 @@
 /* socket相关参数 */
 #define SERVER_PORT                     (10808) /* 服务器监听端口 */
 
+/* epoll相关参数 */
+#define SERVER_EPOLL_EVENT_SIZE         (10)  /* epoll事件数量 */
+
 /* 服务器与客户端连接结构 */
 typedef struct connect_s
 {
     int fd;
-    
     struct connect_s *next;
 }connect_t;
 
@@ -42,6 +45,7 @@ typedef struct server_s
     int socket_fd;              /* socket通信文件描述符 */
     connect_t connect_head;     /* 连接队列头 */
     int connect_count;          /* 当前连接的数量 */
+    int epoll_fd;            /* epoll文件描述符 */
 }server_t;
 
 /*
