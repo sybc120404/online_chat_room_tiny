@@ -71,6 +71,7 @@ typedef enum
 
     ERR_CLIENT_INIT = 400,  /* 客户端初始化失败 */
     ERR_CLIENT_INPUT, /* 客户端输入处理失败 */
+    ERR_CLIENT_RECEIVE, /* 客户端接收消息失败 */
 }ERR_CODE;
 
 /*

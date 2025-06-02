@@ -6,6 +6,7 @@
 */
 
 #include "debug_log.h"
+#include <pthread.h>
 
 /*
     Typedefs
@@ -14,6 +15,7 @@
 typedef struct client_s
 {
     int socket_fd;        /* 客户端socket文件描述符 */
+    pthread_t thread_id;    /* 客户端子线程ID */
 }client_t;
 
 /*

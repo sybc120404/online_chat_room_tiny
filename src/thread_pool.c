@@ -234,7 +234,7 @@ ERR_CODE thread_pool_add_task(thread_pool_t *p_pool, void (*task_func)(void *arg
 
     pthread_mutex_unlock(p_pool->mutex);
 
-    DBG_ALZ("task added to thread pool");
+    DBG("task added to thread pool");
 
     return ERR_NO_ERROR;
 }

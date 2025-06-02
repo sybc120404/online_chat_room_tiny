@@ -28,16 +28,33 @@
 
 /* socket相关参数 */
 #define SERVER_PORT                     (9090) /* 服务器监听端口 */
+#define USER_NAME_SIZE               (32)  /* 用户名大小 */
+#define BUFFER_HEADER_SIZE              (32)  /* 消息头部大小 */
 #define BUFFER_SIZE                     (1024) /* socket读写缓冲区大小 */
 
 /* epoll相关参数 */
 #define SERVER_EPOLL_EVENT_SIZE         (10)  /* epoll事件数量 */
 
+typedef enum
+{
+    MSG_TYPE_MSG = 0,  /* 消息类型 */
+    MSG_TYPE_USER_REGISTER, /* 用户注册类型 */
+}msg_type_t;
+
+/* 服务器-客户端通信缓冲区结构 */
+typedef struct msg_s
+{
+    msg_type_t protocol : 8;  /* 协议类型 */
+    int length : 24;   /* 消息长度 */
+    char data[BUFFER_SIZE - BUFFER_HEADER_SIZE]; /* 消息数据 */
+}msg_t;
+
 /* 服务器与客户端连接结构 */
 typedef struct connect_s
 {
     int fd;
-    char buffer[BUFFER_SIZE];;
+    char user_name[USER_NAME_SIZE]; /* 用户名 */
+    msg_t msg;
     struct connect_s *next;
 }connect_t;
 

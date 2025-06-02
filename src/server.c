@@ -161,12 +161,75 @@ connect_t* connect_list_find(IN server_t *p_server, IN int connect_fd)
 }
 
 /*
-    function    处理新的socket链接
-    in          p_server    指向服务器对象
-                socket_fd   socket文件描述符
+    function    处理客户端消息
+    in          s_c     指向服务器连接参数
     out
     ret
 */
+static void handle_client_msg(void *s_c)
+{
+    server_connect_t *arg = (server_connect_t *)s_c;
+    server_t *p_server = arg->p_server;
+    int connect_fd = arg->connect_fd;
+    connect_t *p_connect = NULL;
+    connect_t *ptr = NULL;
+    msg_t msg = {};
+    char buffer_tmp[BUFFER_SIZE*2] = {};
+
+    PFM_ENSURE_RET(NULL != p_server, );
+    PFM_ENSURE_RET(-1 != connect_fd, );
+
+    /* 查找连接 */
+    p_connect = connect_list_find(p_server, connect_fd);
+    if(NULL == p_connect)
+    {
+        DBG_ERR("connect fd %d not found in server", connect_fd);
+        return;
+    }
+
+    switch(p_connect->msg.protocol)
+    {
+        case MSG_TYPE_USER_REGISTER:    /* 处理用户注册 */
+        {
+            DBG("handle user register from fd %d: %s", connect_fd, p_connect->msg.data);
+            memcpy(p_connect->user_name, p_connect->msg.data, USER_NAME_SIZE);
+            break;
+        }
+        case MSG_TYPE_MSG:  /* 处理普通消息 */
+        {
+            DBG("handle client msg from fd %d, user_name %s: %s", connect_fd, p_connect->user_name, p_connect->msg.data);
+
+            /* 封装消息 */
+            msg.protocol = MSG_TYPE_MSG;
+            snprintf(buffer_tmp, sizeof(buffer_tmp), "[%s] %s", p_connect->user_name, p_connect->msg.data);
+            memcpy(msg.data, buffer_tmp, BUFFER_SIZE-BUFFER_HEADER_SIZE-1);
+            msg.data[BUFFER_SIZE-BUFFER_HEADER_SIZE-1] = '\0';
+            msg.length = strlen(msg.data);
+            /* 广播给其他客户端 */
+            pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+            ptr = p_server->connect_head.next;  /* 从头节点开始遍历 */
+            while(ptr)
+            {
+                if(ptr->fd != connect_fd)  /* 不发送给自己 */
+                {
+                    send(ptr->fd, (void*)&msg, sizeof(msg_t), 0);
+                }
+                ptr = ptr->next;
+            }
+            pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+            break;
+        }
+        default:
+        {
+            DBG_ERR("unknown message type %d from client fd %d", p_connect->msg.protocol, connect_fd);
+            break;
+        }
+    }
+    
+    free(s_c);  /* 释放服务器连接参数内存 */
+    return;
+}
+
 static ERR_CODE handler_new_connection(IN server_t *p_server, IN int socket_fd)
 {
     struct sockaddr_in client_addr = {};
@@ -206,10 +269,9 @@ static ERR_CODE handler_new_connection(IN server_t *p_server, IN int socket_fd)
         goto err;
     }
 
-    /* 链表操作交给线程池异步处理 */
     s_c.p_server = p_server;
     s_c.connect_fd = client_fd;
-    thread_pool_add_task(&(p_server->thread_pool), connect_list_add, (void *)&s_c);
+    connect_list_add((void*)&s_c);
 
     return ERR_NO_ERROR;
 
@@ -221,10 +283,10 @@ err:
 
 static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
 {
-    char buffer[1024] = {};
+    char buffer[BUFFER_SIZE] = {};
     ssize_t bytes_read = 0;
     connect_t *p_connect = NULL;
-    server_connect_t s_c = {};
+    server_connect_t *s_c = NULL;
     
     PFM_ENSURE_RET(NULL != p_server, ERR_BAD_PARAM);
     PFM_ENSURE_RET(-1 != connect_fd, ERR_BAD_PARAM);
@@ -233,20 +295,42 @@ static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
     if (bytes_read > 0)
     {
         buffer[bytes_read] = '\0';
+
         p_connect = connect_list_find(p_server, connect_fd);  /* 确保连接存在 */
         if(NULL != p_connect)
         {
-            memset(p_connect->buffer, 0, BUFFER_SIZE);  /* 清空缓冲区 */
-            memcpy(p_connect->buffer, buffer, sizeof(buffer));
+            memset(&p_connect->msg, 0, sizeof(msg_t));  /* 清空缓冲区 */
+            memcpy(&p_connect->msg, buffer, sizeof(msg_t));
         }
-        DBG_ALZ("received data from client %d: %s", connect_fd, p_connect->buffer);
+
+        s_c = (server_connect_t *)malloc(sizeof(server_connect_t));
+
+        if(NULL == s_c)
+        {
+            DBG_ERR("malloc for server connect");
+            return ERR_NO_MEMORY;
+        }
+        memset(s_c, 0, sizeof(server_connect_t));
+
+        s_c->p_server = p_server;
+        s_c->connect_fd = connect_fd;
+
+        /* 线程池处理数据 */
+        thread_pool_add_task(&(p_server->thread_pool), handle_client_msg, (void*)s_c);    /* 此处malloc挂起 */
     }
     else if (bytes_read == 0)       /* 客户端关闭连接 */
     {
         close(connect_fd);
 
-        s_c.p_server = p_server;
-        s_c.connect_fd = connect_fd;
+        s_c = (server_connect_t *)malloc(sizeof(server_connect_t));
+        if(NULL == s_c)
+        {
+            DBG_ERR("malloc for server connect");
+            return ERR_NO_MEMORY;
+        }
+        memset(s_c, 0, sizeof(server_connect_t));
+        s_c->p_server = p_server;
+        s_c->connect_fd = connect_fd;
         thread_pool_add_task(&(p_server->thread_pool), connect_list_del, (void *)&s_c);    /* 链表操作交给线程池处理 */
         DBG_ALZ("client %d closed connection", connect_fd);
     }

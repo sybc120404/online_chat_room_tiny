@@ -114,14 +114,48 @@ ERR_CODE client_destroy(client_t *p_client)
 }
 
 /*
+    function    客户端注册
+    in          p_client                        指向客户端对象
+                user_name                      用户名
+    out
+    ret         errCode
+*/
+ERR_CODE client_register(IN client_t *p_client, IN const char *user_name)
+{
+    msg_t msg = {};
+
+    PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
+    PFM_ENSURE_RET(NULL != user_name && USER_NAME_SIZE > strlen(user_name), ERR_BAD_PARAM);
+
+    msg.protocol = MSG_TYPE_USER_REGISTER;  // 设置消息类型为用户注册
+    msg.length = strlen(user_name);
+    memcpy(msg.data, user_name, msg.length);
+
+    // 发送注册消息
+    if (send(p_client->socket_fd, (void*)&msg, sizeof(msg_t), 0) == -1) {
+        perror("send");
+        DBG_ERR("send failed");
+        return ERR_CLIENT_INPUT;
+    }
+
+    DBG("client registered with user name: %s", user_name);
+
+    return ERR_NO_ERROR;
+}
+
+/*
+    function    客户端输入消息
+    in          p_client                        指向客户端对象
+    out
+    ret         errCode
 */
 ERR_CODE client_input(IN client_t *p_client)
 {
-    char buffer[BUFFER_SIZE] = {0};
+    char buffer[BUFFER_SIZE - BUFFER_HEADER_SIZE] = {0};
+    msg_t msg = {};
 
     PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
 
-    printf("Enter message to send: ");
     if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
         perror("fgets");
         DBG_ERR("fgets failed");
@@ -131,7 +165,13 @@ ERR_CODE client_input(IN client_t *p_client)
     if (len > 0 && buffer[len - 1] == '\n') {
         buffer[len - 1] = '\0';  // 去掉换行符
     }
-    if (send(p_client->socket_fd, buffer, strlen(buffer), 0) == -1) {
+
+    msg.protocol = MSG_TYPE_MSG;  // 设置消息类型
+    msg.length = strlen(buffer);
+    memcpy(msg.data, buffer, msg.length);
+
+    // 发送消息
+    if (send(p_client->socket_fd, (void*)&msg, sizeof(msg_t), 0) == -1) {
         perror("send");
         DBG_ERR("send failed");
         return ERR_CLIENT_INPUT;
@@ -141,13 +181,67 @@ ERR_CODE client_input(IN client_t *p_client)
 }
 
 /*
+    function    客户端接受消息
+    in          p_client                        指向客户端对象
+    out
+    ret         errCode
+*/
+ERR_CODE client_receive(IN client_t *p_client)
+{
+    msg_t msg = {};
+    ssize_t bytes_received = 0;
+
+    PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
+
+    bytes_received = recv(p_client->socket_fd, (void*)&msg, sizeof(msg_t), 0);
+    if (bytes_received == -1) {
+        perror("recv");
+        DBG_ERR("recv failed");
+        return ERR_CLIENT_RECEIVE;
+    } else if (bytes_received == 0) {
+        DBG_ERR("server closed connection");
+        PFM_ENSURE_RET(ERR_NO_ERROR == client_destroy(p_client), ERR_CLIENT_INIT);  /* 销毁客户端 */
+    }
+
+    DBG("client received message from server: %s", msg.data);
+
+    switch(msg.protocol)
+    {
+        case MSG_TYPE_MSG:
+        {
+            printf("%s\r\n", msg.data);
+            break;
+        }
+        default:
+        {
+            return ERR_BAD_PARAM;
+        }
+    }
+
+    return ERR_NO_ERROR;
+}
+
+static void* thread_worker(void *arg)
+{
+    while (1) {
+        if (ERR_NO_ERROR != client_receive((client_t *)arg)) {
+            DBG_ERR("client receive failed");
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+/*
     Main
 */
 
-int main()
+int main(int argc, char *argv[])
 {
     struct sigaction sa = {};
 
+    PFM_ENSURE_RET(2 == argc, ERR_BAD_PARAM);
     PFM_ENSURE_RET(ERR_NO_ERROR == client_init(&client), ERR_CLIENT_INIT);
 
     sa.sa_handler = signal_handler;
@@ -160,7 +254,24 @@ int main()
         DBG_ERR("sigaction failed");
         client_destroy(&client);
     }
-    
+
+    // 客户端注册
+    if (ERR_NO_ERROR != client_register(&client, argv[1]))
+    {
+        DBG_ERR("client register failed");
+        client_destroy(&client);
+        return ERR_CLIENT_INIT;
+    }
+
+    /* 子线程处理服务端消息 */
+    if (pthread_create(&client.thread_id, NULL, thread_worker, &client) != 0) {
+        perror("pthread_create");
+        DBG_ERR("create client thread failed");
+        client_destroy(&client);
+        return ERR_CLIENT_INIT;
+    }
+
+    printf("Hi [%s], weclome to tiny chat room.\r\n", argv[1]);
     while(1)
     {
         if(ERR_NO_ERROR != client_input(&client))
