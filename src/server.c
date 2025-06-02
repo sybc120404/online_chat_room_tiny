@@ -42,6 +42,125 @@ static void signal_handler(int signum)
 }
 
 /*
+    function    向连接链表中新增连接，用于提交给线程池
+    in          s_c     指向服务器连接参数
+    out
+    ret
+*/
+static void connect_list_add(void *s_c)
+{
+    connect_t *new_connect = NULL;
+    server_connect_t *arg = (server_connect_t *)s_c;
+    server_t *p_server = arg->p_server;
+    int client_fd = arg->connect_fd;
+
+    /* 分配新的连接结构 */
+    new_connect = (connect_t *)malloc(sizeof(connect_t));
+    if(NULL == new_connect)
+    {
+        DBG_ERR("malloc for new connect");
+        return;
+    }
+    memset(new_connect, 0, sizeof(connect_t));
+
+    /* 初始化新连接 */
+    new_connect->fd = client_fd;
+    new_connect->next = NULL;
+
+    pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+
+    /* 将新连接添加到服务器连接列表 */
+    if(NULL == p_server->connect_head.next)
+    {
+        p_server->connect_head.next = new_connect;  /* 第一个连接 */
+    }
+    else
+    {
+        connect_t *ptr = p_server->connect_head.next;
+        while(ptr->next)  /* 找到最后一个连接 */
+        {
+            ptr = ptr->next;
+        }
+        ptr->next = new_connect;  /* 添加到最后 */
+    }
+    p_server->connect_count++;  /* 增加连接计数 */
+
+    pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+
+    DBG_ALZ("add new connect fd %d to server, total connects: %d", client_fd, p_server->connect_count);
+
+    return;
+}
+
+/*
+    function    从连接链表中删除连接，用于提交给线程池
+    in          s_c     指向服务器连接参数
+    out
+    ret
+*/
+static void connect_list_del(void *s_c)
+{
+    server_connect_t *arg = (server_connect_t *)s_c;
+    server_t *p_server = arg->p_server;
+    int connect_fd = arg->connect_fd;
+    connect_t *ptr = NULL;
+    connect_t *prev = NULL;
+
+    pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+
+    /* 从连接链表中删除 */
+    ptr = p_server->connect_head.next;
+    prev = &p_server->connect_head;  /* 头节点的前一个指针 */
+    while(ptr)
+    {
+        if(ptr->fd == connect_fd)  /* 找到要删除的连接 */
+        {
+            prev->next = ptr->next;  /* 删除当前连接 */
+            free(ptr);               /* 释放内存 */
+            p_server->connect_count--;  /* 减少连接计数 */
+            DBG("removed client %d from server, total connects: %d", connect_fd, p_server->connect_count);
+            break;
+        }
+        prev = ptr;  /* 移动到下一个连接 */
+        ptr = ptr->next;
+    }
+
+    pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+}
+
+/*
+    function    从连接链表中查找指定节点，返回指针
+    in          connect_fd   要查找的连接文件描述符
+    out
+    ret         ptr
+*/
+connect_t* connect_list_find(IN server_t *p_server, IN int connect_fd)
+{
+    connect_t *ptr = NULL;
+
+    PFM_ENSURE_RET(NULL != p_server, NULL);
+    PFM_ENSURE_RET(-1 != connect_fd, NULL);
+
+    pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+
+    ptr = server.connect_head.next;  /* 从头节点开始查找 */
+    while(ptr)
+    {
+        if(ptr->fd == connect_fd)  /* 找到匹配的连接 */
+        {
+            pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+            return ptr;
+        }
+        ptr = ptr->next;  /* 移动到下一个连接 */
+    }
+
+    pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+
+    DBG_ERR("connect fd %d not found in server", connect_fd);
+    return NULL;  /* 没有找到 */
+}
+
+/*
     function    处理新的socket链接
     in          p_server    指向服务器对象
                 socket_fd   socket文件描述符
@@ -52,9 +171,9 @@ static ERR_CODE handler_new_connection(IN server_t *p_server, IN int socket_fd)
 {
     struct sockaddr_in client_addr = {};
     socklen_t addr_len = sizeof(client_addr);
-    connect_t *new_connect = NULL;
     int client_fd = 0;
     struct epoll_event ev = {};
+    server_connect_t s_c = {};
 
     PFM_ENSURE_RET(NULL != p_server, ERR_BAD_PARAM);
     PFM_ENSURE_RET(-1 != socket_fd, ERR_BAD_PARAM);
@@ -87,40 +206,15 @@ static ERR_CODE handler_new_connection(IN server_t *p_server, IN int socket_fd)
         goto err;
     }
 
-    /* 分配新的连接结构 */
-    new_connect = (connect_t *)malloc(sizeof(connect_t));
-    if(NULL == new_connect)
-    {
-        DBG_ERR("malloc for new connect");
-        goto err;
-    }
-    memset(new_connect, 0, sizeof(connect_t));
-
-    /* 初始化新连接 */
-    new_connect->fd = client_fd;
-    new_connect->next = NULL;
-    /* 将新连接添加到服务器连接列表 */
-    if(NULL == p_server->connect_head.next)
-    {
-        p_server->connect_head.next = new_connect;  /* 第一个连接 */
-    }
-    else
-    {
-        connect_t *ptr = p_server->connect_head.next;
-        while(ptr->next)  /* 找到最后一个连接 */
-        {
-            ptr = ptr->next;
-        }
-        ptr->next = new_connect;  /* 添加到最后 */
-    }
-    p_server->connect_count++;  /* 增加连接计数 */
-    DBG_ALZ("add new connect fd %d to server, total connects: %d", client_fd, p_server->connect_count);
+    /* 链表操作交给线程池异步处理 */
+    s_c.p_server = p_server;
+    s_c.connect_fd = client_fd;
+    thread_pool_add_task(&(p_server->thread_pool), connect_list_add, (void *)&s_c);
 
     return ERR_NO_ERROR;
 
 err:
     DBG_ERR("handle new connection failed");
-    if(new_connect) free(new_connect);
     if(-1 != client_fd) close(client_fd);
     return ERR_SERVER_NEW_CONNECT;
 }
@@ -129,8 +223,8 @@ static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
 {
     char buffer[1024] = {};
     ssize_t bytes_read = 0;
-    connect_t *ptr = NULL;
-    connect_t *prev = NULL;
+    connect_t *p_connect = NULL;
+    server_connect_t s_c = {};
     
     PFM_ENSURE_RET(NULL != p_server, ERR_BAD_PARAM);
     PFM_ENSURE_RET(-1 != connect_fd, ERR_BAD_PARAM);
@@ -139,28 +233,21 @@ static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
     if (bytes_read > 0)
     {
         buffer[bytes_read] = '\0';
-        DBG_ALZ("received data from client %d: %s", connect_fd, buffer);
+        p_connect = connect_list_find(p_server, connect_fd);  /* 确保连接存在 */
+        if(NULL != p_connect)
+        {
+            memset(p_connect->buffer, 0, BUFFER_SIZE);  /* 清空缓冲区 */
+            memcpy(p_connect->buffer, buffer, sizeof(buffer));
+        }
+        DBG_ALZ("received data from client %d: %s", connect_fd, p_connect->buffer);
     }
     else if (bytes_read == 0)       /* 客户端关闭连接 */
     {
         close(connect_fd);
-        /* 从连接链表中删除 */
-        ptr = p_server->connect_head.next;
-        prev = &p_server->connect_head;  /* 头节点的前一个指针 */
-        while(ptr)
-        {
-            if(ptr->fd == connect_fd)  /* 找到要删除的连接 */
-            {
-                prev->next = ptr->next;  /* 删除当前连接 */
-                free(ptr);               /* 释放内存 */
-                p_server->connect_count--;  /* 减少连接计数 */
-                DBG("removed client %d from server, total connects: %d", connect_fd, p_server->connect_count);
-                break;
-            }
-            prev = ptr;  /* 移动到下一个连接 */
-            ptr = ptr->next;
-        }
 
+        s_c.p_server = p_server;
+        s_c.connect_fd = connect_fd;
+        thread_pool_add_task(&(p_server->thread_pool), connect_list_del, (void *)&s_c);    /* 链表操作交给线程池处理 */
         DBG_ALZ("client %d closed connection", connect_fd);
     }
     else
@@ -264,6 +351,10 @@ ERR_CODE server_init(
     }
     DBG("add socket %d to epoll fd %d", p_server->socket_fd, p_server->epoll_fd);
 
+    /* 初始化互斥锁 */
+    pthread_mutex_init(&(p_server->mutex), NULL);
+    DBG("initialize server mutex");
+
     /* 初始化其他参数 */
     p_server->connect_head.fd = -1;
     p_server->connect_head.next = NULL;
@@ -278,6 +369,7 @@ err:
     if(thread_pool_flag)    thread_pool_destroy(&(p_server->thread_pool));
     if(-1 != p_server->socket_fd)       close(p_server->socket_fd);
     if(-1 != p_server->epoll_fd)         close(p_server->epoll_fd);
+    pthread_mutex_destroy(&(p_server->mutex));
     memset(p_server, 0, sizeof(server_t));
 
     return ERR_SERVER_INIT;
@@ -332,6 +424,11 @@ ERR_CODE server_destory(IN server_t *p_server)
         p_server->epoll_fd = -1;
         DBG("close epoll_fd");
     }
+
+    /* 销毁互斥锁 */
+    pthread_mutex_destroy(&(p_server->mutex));
+
+    memset(p_server, 0, sizeof(server_t));  /* 清空服务器对象 */
 
     DBG_ALZ("server destory done");
     return ERR_NO_ERROR;

@@ -47,7 +47,7 @@ static void *thread_worker(void *p_pool)
         /* 执行任务，负责free */
         if(p_task && p_task->task_func)
         {
-            DBG_ALZ("Thread %ld executing task", pthread_self());
+            DBG("Thread %ld executing task", pthread_self());
             p_task->task_func(p_task->arg);
             free(p_task);
         }

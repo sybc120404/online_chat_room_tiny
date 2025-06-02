@@ -7,6 +7,7 @@
 
 #include "thread_pool.h"
 
+#include <pthread.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -36,6 +37,7 @@
 typedef struct connect_s
 {
     int fd;
+    char buffer[BUFFER_SIZE];;
     struct connect_s *next;
 }connect_t;
 
@@ -47,7 +49,15 @@ typedef struct server_s
     connect_t connect_head;     /* 连接队列头 */
     int connect_count;          /* 当前连接的数量 */
     int epoll_fd;            /* epoll文件描述符 */
+    pthread_mutex_t mutex;      /* 服务器互斥锁 */
 }server_t;
+
+/* 服务器-连接 */
+typedef struct server_connect
+{
+    server_t *p_server;
+    int connect_fd;
+}server_connect_t;
 
 /*
     Function declarations
