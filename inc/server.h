@@ -39,6 +39,8 @@ typedef enum
 {
     MSG_TYPE_MSG = 0,  /* 消息类型 */
     MSG_TYPE_USER_REGISTER, /* 用户注册类型 */
+    MSG_TYPE_USER_OFFLINE, /* 用户下线类型 */
+    MSG_TYPE_USER_ONLINE,   /* 用户上线类型 */
 }msg_type_t;
 
 /* 服务器-客户端通信缓冲区结构 */

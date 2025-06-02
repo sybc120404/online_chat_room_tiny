@@ -44,6 +44,60 @@ static void signal_handler(int signum)
 }
 
 /*
+    function    客户端上线，发送消息通知其他客户端，不做其他操作
+    in          p_client    指向客户端对象
+    out
+    ret
+*/
+ERR_CODE client_online(IN client_t *p_client)
+{
+    msg_t msg = {};
+
+    PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
+
+    msg.protocol = MSG_TYPE_USER_ONLINE;
+    msg.length = 0;  // 上线消息不需要数据
+
+    // 发送上线消息
+    if (send(p_client->socket_fd, (void*)&msg, sizeof(msg_t), 0) == -1) {
+        perror("send");
+        DBG_ERR("send failed");
+        return ERR_CLIENT_INPUT;
+    }
+
+    DBG("client online");
+
+    return ERR_NO_ERROR;
+}
+
+/*
+    function    客户端下线，发送消息通知其他客户端，不做其他操作
+    in          p_client    指向客户端对象
+    out
+    ret
+*/
+ERR_CODE client_offline(IN client_t *p_client)
+{
+    msg_t msg = {};
+
+    PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
+
+    msg.protocol = MSG_TYPE_USER_OFFLINE;
+    msg.length = 0;  // 下线消息不需要数据
+
+    // 发送下线消息
+    if (send(p_client->socket_fd, (void*)&msg, sizeof(msg_t), 0) == -1) {
+        perror("send");
+        DBG_ERR("send failed");
+        return ERR_CLIENT_INPUT;
+    }
+
+    DBG("client offline");
+
+    return ERR_NO_ERROR;
+}
+
+/*
     function    客户端对象初始化
     in          p_client                        指向客户端对象
     out
@@ -101,6 +155,8 @@ err:
 ERR_CODE client_destroy(client_t *p_client)
 {
     PFM_ENSURE_RET(NULL != p_client, ERR_BAD_PARAM);
+
+    client_offline(p_client);  // 发送下线消息
     
     if (p_client->socket_fd != -1)
     {
@@ -137,6 +193,8 @@ ERR_CODE client_register(IN client_t *p_client, IN const char *user_name)
         DBG_ERR("send failed");
         return ERR_CLIENT_INPUT;
     }
+
+    //client_online(&client);
 
     DBG("client registered with user name: %s", user_name);
 
@@ -207,6 +265,16 @@ ERR_CODE client_receive(IN client_t *p_client)
 
     switch(msg.protocol)
     {
+        case MSG_TYPE_USER_OFFLINE:
+        {
+            printf(DBG_FMT_RED"%s\r\n"DBG_FMT_END, msg.data);
+            break;
+        }
+        case MSG_TYPE_USER_ONLINE:
+        {
+            printf(DBG_FMT_GREEN"%s\r\n"DBG_FMT_END, msg.data);
+            break;
+        }
         case MSG_TYPE_MSG:
         {
             printf("%s\r\n", msg.data);

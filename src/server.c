@@ -219,6 +219,56 @@ static void handle_client_msg(void *s_c)
             pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
             break;
         }
+        case MSG_TYPE_USER_OFFLINE: /* 处理下线消息 */
+        {
+            DBG("handle user offline from fd %d, %s", connect_fd, p_connect->user_name);
+
+            /* 封装消息 */
+            msg.protocol = MSG_TYPE_USER_OFFLINE;
+            snprintf(buffer_tmp, sizeof(buffer_tmp), "[%s] offline", p_connect->user_name);
+            memcpy(msg.data, buffer_tmp, BUFFER_SIZE-BUFFER_HEADER_SIZE-1);
+            msg.data[BUFFER_SIZE-BUFFER_HEADER_SIZE-1] = '\0';
+            msg.length = strlen(msg.data);
+
+            pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+            ptr = p_server->connect_head.next;  /* 从头节点开始遍历 */
+            while(ptr)
+            {
+                if(ptr->fd != connect_fd)  /* 不发送给自己 */
+                {
+                    send(ptr->fd, (void*)&msg, sizeof(msg_t), 0);
+                }
+                ptr = ptr->next;
+            }
+            pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+
+            break;
+        }
+        case MSG_TYPE_USER_ONLINE: /* 处理上线消息 */
+        {
+            DBG("handle user online from fd %d, %s", connect_fd, p_connect->user_name);
+
+            /* 封装消息 */
+            msg.protocol = MSG_TYPE_USER_ONLINE;
+            snprintf(buffer_tmp, sizeof(buffer_tmp), "[%s] online", p_connect->user_name);
+            memcpy(msg.data, buffer_tmp, BUFFER_SIZE-BUFFER_HEADER_SIZE-1);
+            msg.data[BUFFER_SIZE-BUFFER_HEADER_SIZE-1] = '\0';
+            msg.length = strlen(msg.data);
+
+            pthread_mutex_lock(&(p_server->mutex));  /* 锁定服务器互斥锁 */
+            ptr = p_server->connect_head.next;  /* 从头节点开始遍历 */
+            while(ptr)
+            {
+                if(ptr->fd != connect_fd)  /* 不发送给自己 */
+                {
+                    send(ptr->fd, (void*)&msg, sizeof(msg_t), 0);
+                }
+                ptr = ptr->next;
+            }
+            pthread_mutex_unlock(&(p_server->mutex));  /* 解锁服务器互斥锁 */
+
+            break;
+        }
         default:
         {
             DBG_ERR("unknown message type %d from client fd %d", p_connect->msg.protocol, connect_fd);
