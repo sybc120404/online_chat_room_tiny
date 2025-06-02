@@ -316,7 +316,7 @@ static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
         s_c->connect_fd = connect_fd;
 
         /* 线程池处理数据 */
-        thread_pool_add_task(&(p_server->thread_pool), handle_client_msg, (void*)s_c);    /* 此处malloc挂起 */
+        thread_pool_add_task(&(p_server->thread_pool), handle_client_msg, (void*)s_c);
     }
     else if (bytes_read == 0)       /* 客户端关闭连接 */
     {
@@ -555,6 +555,19 @@ int main()
             else if(events[i].events & EPOLLIN)         /* 处理可读事件 */
             {
                 handler_read_event(&server, events[i].data.fd);
+            }
+            else if(events[i].events & EPOLLRDHUP)  /* 处理连接关闭事件 */
+            {
+                DBG_ERR("client fd %d closed connection", events[i].data.fd);
+                pthread_mutex_lock(&(server.mutex));  /* 锁定服务器互斥锁 */
+                connect_list_del((void *)&(server_connect_t){.p_server = &server, .connect_fd = events[i].data.fd});
+                pthread_mutex_unlock(&(server.mutex));  /* 解锁服务器互斥锁 */
+                close(events[i].data.fd);  /* 关闭连接 */
+                epoll_ctl(server.epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, NULL);  /* 从epoll中删除 */
+            }
+            else
+            {
+                DBG_ERR("unknown epoll event %d for fd %d", events[i].events, events[i].data.fd);
             }
         }
     }
