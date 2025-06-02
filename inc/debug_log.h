@@ -68,7 +68,9 @@ typedef enum
 
     ERR_SERVER_INIT = 300,  /* 服务器初始化失败 */
     ERR_SERVER_NEW_CONNECT, /* 服务器新连接处理失败 */
-    
+
+    ERR_CLIENT_INIT = 400,  /* 客户端初始化失败 */
+    ERR_CLIENT_INPUT, /* 客户端输入处理失败 */
 }ERR_CODE;
 
 /*

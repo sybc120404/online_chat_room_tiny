@@ -26,7 +26,8 @@
 #define SERVER_CONNECT_SIZE             (5)
 
 /* socket相关参数 */
-#define SERVER_PORT                     (10808) /* 服务器监听端口 */
+#define SERVER_PORT                     (9090) /* 服务器监听端口 */
+#define BUFFER_SIZE                     (1024) /* socket读写缓冲区大小 */
 
 /* epoll相关参数 */
 #define SERVER_EPOLL_EVENT_SIZE         (10)  /* epoll事件数量 */

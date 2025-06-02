@@ -125,6 +125,52 @@ err:
     return ERR_SERVER_NEW_CONNECT;
 }
 
+static ERR_CODE handler_read_event(IN server_t *p_server, IN int connect_fd)
+{
+    char buffer[1024] = {};
+    ssize_t bytes_read = 0;
+    connect_t *ptr = NULL;
+    connect_t *prev = NULL;
+    
+    PFM_ENSURE_RET(NULL != p_server, ERR_BAD_PARAM);
+    PFM_ENSURE_RET(-1 != connect_fd, ERR_BAD_PARAM);
+
+    bytes_read = read(connect_fd, buffer, sizeof(buffer) - 1);
+    if (bytes_read > 0)
+    {
+        buffer[bytes_read] = '\0';
+        DBG_ALZ("received data from client %d: %s", connect_fd, buffer);
+    }
+    else if (bytes_read == 0)       /* 客户端关闭连接 */
+    {
+        close(connect_fd);
+        /* 从连接链表中删除 */
+        ptr = p_server->connect_head.next;
+        prev = &p_server->connect_head;  /* 头节点的前一个指针 */
+        while(ptr)
+        {
+            if(ptr->fd == connect_fd)  /* 找到要删除的连接 */
+            {
+                prev->next = ptr->next;  /* 删除当前连接 */
+                free(ptr);               /* 释放内存 */
+                p_server->connect_count--;  /* 减少连接计数 */
+                DBG("removed client %d from server, total connects: %d", connect_fd, p_server->connect_count);
+                break;
+            }
+            prev = ptr;  /* 移动到下一个连接 */
+            ptr = ptr->next;
+        }
+
+        DBG_ALZ("client %d closed connection", connect_fd);
+    }
+    else
+    {
+        DBG_ERR("read from client %d failed", connect_fd);
+    }
+
+    return ERR_NO_ERROR;
+}
+
 /*
     function    服务器对象初始化
     in          p_server                        指向服务器对象
@@ -324,6 +370,10 @@ int main()
             if(events[i].data.fd == server.socket_fd)  /* 新连接 */
             {
                 handler_new_connection(&server, events[i].data.fd);
+            }
+            else if(events[i].events & EPOLLIN)         /* 处理可读事件 */
+            {
+                handler_read_event(&server, events[i].data.fd);
             }
         }
     }
